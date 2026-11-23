@@ -1,60 +1,59 @@
-"""Copy the pre-rendered front page to the grader's output directory.
+"""Deliver the pre-rendered front page to the grader's output folder.
 
-The front page is rendered at build time by tools/render.py into entry.png
-next to this file. This entrypoint only copies that file, so the two grader
-runs write identical bytes with no network and no third-party package.
-Standard library only.
+tools/render.py draws entry.png next to this file at build time. This
+entrypoint only copies it, so both grader runs write identical bytes with
+no network and no third-party package. Standard library only.
 """
 
 import os
 import sys
 from pathlib import Path
 
-MAX_BYTES = 1_048_576
-MAX_SIDE = 1024
-PNG_HEAD = b"\x89PNG\r\n\x1a\n"
-JPG_HEAD = b"\xff\xd8"
+BYTE_CAP = 1_048_576
+SIDE_CAP = 1024
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+JPG_SIG = b"\xff\xd8"
 
-ROOT = Path(__file__).resolve().parent
-IMAGE = ROOT / "entry.png"
-
-
-def out_path():
-    base = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
-    return base / "entry.png"
+HERE = Path(__file__).resolve().parent
+PICTURE = HERE / "entry.png"
 
 
-def png_size(blob):
-    """Width and height from a PNG's IHDR chunk (bytes 16..24)."""
-    width = int.from_bytes(blob[16:20], "big")
-    height = int.from_bytes(blob[20:24], "big")
-    return width, height
+def target_path():
+    out = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
+    return out / "entry.png"
 
 
-def check(blob):
-    """Raise SystemExit unless blob is a PNG/JPEG within the size gates."""
-    if len(blob) > MAX_BYTES:
+def read_png_dims(blob):
+    """(width, height) from a PNG IHDR chunk, which starts at byte 16."""
+    w = int.from_bytes(blob[16:20], "big")
+    h = int.from_bytes(blob[20:24], "big")
+    return w, h
+
+
+def validate(blob):
+    """Return (width, height) or exit unless blob fits the output gates."""
+    if len(blob) > BYTE_CAP:
         raise SystemExit(f"entry.png is {len(blob)} bytes, over 1 MiB")
-    if blob[:8] == PNG_HEAD:
-        width, height = png_size(blob)
-    elif blob[:2] == JPG_HEAD:
+    if blob[:8] == PNG_SIG:
+        width, height = read_png_dims(blob)
+    elif blob[:2] == JPG_SIG:
         width, height = 0, 0
     else:
         raise SystemExit("entry.png is neither PNG nor JPEG")
-    if width > MAX_SIDE or height > MAX_SIDE:
+    if width > SIDE_CAP or height > SIDE_CAP:
         raise SystemExit(f"entry.png is {width}x{height}, over 1024x1024")
     return width, height
 
 
-def main():
-    blob = IMAGE.read_bytes()
-    check(blob)
-    target = out_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(blob)
-    print(f"wrote {target} ({len(blob)} bytes)")
+def run():
+    blob = PICTURE.read_bytes()
+    validate(blob)
+    dest = target_path()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(blob)
+    print(f"wrote {dest} ({len(blob)} bytes)")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())
